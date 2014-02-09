@@ -50,7 +50,6 @@ function main ()
 
     var i = 1;
     WScript.Stdout.Write("Processing tracks: " + numTracks);
-    return;
     for (i = 1; i <= numTracks; i++)
     {
         var currTrack = tracks.Item(i);
