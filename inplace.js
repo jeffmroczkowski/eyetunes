@@ -2,7 +2,6 @@
 // Script to convert your iTunes library to scale audio files
 // to your start/end time edits
 // 
-// Copyright (C) 2014  Jeff Mroczkowski
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
@@ -19,7 +18,7 @@
 // in place in your itunes collection if the files have had the start/end 
 // times modified.  The original files are stored in the backup folder identified
 // by the path in backupFolder below.  Please note that before you run this 
-// program that you modify this variable and also set the converter options.
+// program that you modify this backupFolder variable and also set the converter options.
 // See Preferences->General->Import Settings within iTunes. 
 //
 // USE THIS AT YOUR OWN RISK.  NO WARRANTY OR LIABILTY
@@ -59,7 +58,7 @@ function main ()
     var i = 1;
     WScript.Stdout.Write("Processing tracks: " + numTracks);
     WScript.Stdout.Write("RUNNING TEST MODE " + test);
-    for (i = 1; i <= numTracks; i++)
+    while (i <= numTracks)
     {
         var currTrack = tracks.Item(i);
         var album = currTrack.Album;
@@ -74,34 +73,29 @@ function main ()
         var create = String(currTrack.DateAdded);
         var lists = currTrack.Playlists;
 
-        // No real source location - can't do anything. - iCloud
-        if (source == undefined) {
+        // No real source location - can't do anything. - iCloud or bad metadata
+        if (source == undefined || !fso.FileExists(source)) {
             fh.WriteLine ('Skipping missing source for : ' + i + ' Artist: ' + artist + ' Album: ' + album);
+            i++;
             continue;
         }
 
         fh.WriteLine ('For: ' + i + ' Artist: ' + artist + ' Album: ' + album +  ' source ' + source);
 
+        // extract the file name so we can backup the file
         var idx = source.lastIndexOf ('\\');
         var name = source.substr (idx + 1, source.length);
         var target = backupFolder + name;
 
         WScript.Stdout.Write('File ' + name + ' start ' + start + ' finish ' + finish + ' duration ' + duration + ' modified ' + modified + '\n');
 
-        if (!fso.FileExists(source)) {
-            var msg = 'Source file does not exist: exiting: this should not happen ' + source;
-            WScript.Stdout.Write(msg);
-            fh.WriteLine (msg);
-        //    return;
-        }
-
-
         // can't convert these old files.  Just leave them alone
         if (source.indexOf ('.m4p') > 0) {
             fh.WriteLine ('Skipping m4p : ' + source);
             WScript.Stdout.Write ('Skipping file cannot convert m4p : ' + source);
+            i++;
         }
-        // if file has an edit
+        // if file has an edit then lets scale it
         else if (start != 0 || finish != duration) {
 
             //Sun Jan 20 20:33:16 PST 2013
@@ -121,7 +115,7 @@ function main ()
             if (monStr == "Dec") monStr = 12;
 
             // Lets change the date on the command line to preserve the create date time
-            // single the create date attribute is read only.  We are going to reinsert 
+            // since the create date attribute is read only.  We are going to reinsert 
             // the file using its old create date by going back in time.
 
             var dateCmd = "CMD.EXE  /C DATE ";
@@ -156,32 +150,37 @@ function main ()
 
             try {
 
-                if (!test) {
-                    var newFile = ConvertThisTrack(source);
-                    WScript.Stdout.Write('NEWFILE ' + newFile + '\n');
-                    fh.WriteLine ('Count ' + i + ' Artist: ' + artist + ' Album: ' + album);
-                    currTrack.Delete();  // delete original
+                if (test) {
+                    i++;
+                    continue;
+                }
+                var newFile = ConvertThisTrack(source);
+                fh.WriteLine ('Count ' + i + ' Artist: ' + artist + ' Album: ' + album + ' Name ' + newFile);
+                currTrack.Delete();  // delete original
 
-                    WScript.Stdout.Write('Playlist Count ' + (lists.Count-1) + '\n');
-                    for (var l = 1; l < lists.Count; l++) {
+                WScript.Stdout.Write('Playlist Count ' + (lists.Count-1) + '\n');
+                for (var l = 1; l <= lists.Count; l++) {
 
-                        var playListItem = lists.Item(l);
-                        if (playListItem.Name == "Music" || playListItem.Smart) {
-                        //if (playListItem.Name == "Music" || playListItem.Name.indexOf ('#') == 0  || playListItem.Name.indexOf ('*') == 0) {
-                            fh.WriteLine ('Not inserting into main collection or smart playlist ' + playListItem.Name);
-                            WScript.Stdout.Write ('Not inserting into main collection or smart playlist ' + playListItem.Name + "\n");
-                        }
-                        else {
-                            WScript.Stdout.Write ("Added file to playlist: " + playListItem.Name + "\n");
-                            playListItem.AddFile(newFile);
-                        }
+                    var playListItem = lists.Item(l);
+                    if (playListItem.Name == "Music" || playListItem.Smart) {
+                        fh.WriteLine ('Not inserting into main collection or smart playlist ' + playListItem.Name);
+                        WScript.Stdout.Write ('Not inserting into main collection or smart playlist ' + playListItem.Name + "\n");
+                    }
+                    else {
+                        WScript.Stdout.Write ("Added file to playlist: " + playListItem.Name + "\n");
+                        playListItem.AddFile(newFile);
                     }
                 }
+                // NOTE:  We don't increment to next track since deletion and addition has change the 
+                // container.   Just leave variable as is so we don't skip others
             }
             catch (e) {
                 WScript.Stdout.Write ("Unable to convert " + source);
                 return;
             }
+        }
+        else {
+            i++;  // file already converted - just go to next one.
         }
     }
 
@@ -216,6 +215,8 @@ function ConvertThisTrack(track)
     return outFile;
 }
 
+// Create a directory that has some depth.  No mkdir -p type of call that I could find
+// in the windows scripting library
 function CreateDirs(dir)
 {
     var pieces = dir.split("\\");
@@ -235,6 +236,10 @@ function CreateDirs(dir)
     }
 }
 
+
+// you can catch database change events here.
+// I added this function to see if I could get around the deletion issue with iCloud files
+// no luck
 function ITEventTest_OnDatabaseChangedEvent(deletedObjects, changedObjects)
 {
     return;
